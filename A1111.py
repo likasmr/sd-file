@@ -108,3 +108,5 @@ if __name__ == "__main__":
     with capture.capture_output():
         unpack_webui()
         asyncio.run(download_configuration())
+        # 下载并覆盖配置文件
+        get_ipython().system(f'curl -sLo {WEBUI}/config.json https://raw.githubusercontent.com/likasmr/sd-file/refs/heads/main/config.json')

@@ -17,7 +17,7 @@ WEBUI = HOME / UI
 SCR_PATH = HOME / 'ANXETY'
 SETTINGS_PATH = SCR_PATH / 'settings.json'
 
-REPO_URL = "https://huggingface.co/likasmr1/AYI/resolve/main/A1111.zip"
+REPO_URL = "https://huggingface.co/likasmr1/AYI/resolve/main/A1111_recompressed.zip"
 BRANCH = read_json(SETTINGS_PATH, 'ENVIRONMENT.branch')
 EXTS = read_json(SETTINGS_PATH, 'WEBUI.extension_dir')
 

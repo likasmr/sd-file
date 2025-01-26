@@ -1,7 +1,10 @@
+# ~ launch.py | by ANXETY ~
+
 from json_utils import read_json, save_json, update_json
 from TunnelHub import Tunnel
 
 from IPython.display import clear_output
+from IPython import get_ipython
 from datetime import timedelta
 from pathlib import Path
 import subprocess
@@ -14,18 +17,23 @@ import yaml
 import os
 import re
 
+
+CD = os.chdir
+ipySys = get_ipython().system
+
 # Constants
 HOME = Path.home()
+VENV = HOME / 'venv'
 SCR_PATH = HOME / 'ANXETY'
 SETTINGS_PATH = SCR_PATH / 'settings.json'
 
+ENV_NAME = read_json(SETTINGS_PATH, 'ENVIRONMENT.env_name')
 UI = read_json(SETTINGS_PATH, 'WEBUI.current')
 WEBUI = read_json(SETTINGS_PATH, 'WEBUI.webui_path')
-ENV_NAME = read_json(SETTINGS_PATH, 'ENVIRONMENT.env_name')
-VENV = read_json(SETTINGS_PATH, 'ENVIRONMENT.venv_path')
 
 # USER VENV
 py = Path(VENV) / 'bin/python3'
+
 
 def load_settings(path):
     """Load settings from a JSON file."""
@@ -65,7 +73,7 @@ def update_config_paths(config_path, paths_to_check):
         for key, expected_value in paths_to_check.items():
             if key in config_data and config_data[key] != expected_value:
                 sed_command = f"sed -i 's|\"{key}\": \".*\"|\"{key}\": \"{expected_value}\"|' {config_path}"
-                get_ipython().system(sed_command)
+                ipySys(sed_command)
                 
 def trash_checkpoints():
     dirs = ["A1111", "ReForge", "ComfyUI", "Forge"]
@@ -85,8 +93,8 @@ def _zrok_enable(token):
             current_token = json.load(f).get('zrok_token')
 
     if current_token != token:
-        get_ipython().system('zrok disable &> /dev/null')
-    get_ipython().system(f'zrok enable {token} &> /dev/null')
+        ipySys('zrok disable &> /dev/null')
+    ipySys(f'zrok enable {token} &> /dev/null')
 
 def _ngrok_auth(token):
     yml_path = Path(ROOT) / '.config/ngrok/ngrok.yml'
@@ -97,7 +105,7 @@ def _ngrok_auth(token):
             current_token = yaml.safe_load(f).get('agent', {}).get('authtoken')
 
     if current_token != token:
-        get_ipython().system(f'ngrok config add-authtoken {token}')
+        ipySys(f'ngrok config add-authtoken {token}')
         
 def setup_tunnels(tunnel_port, public_ipv4):
     """Setup tunneling commands based on available packages and configurations."""
@@ -149,78 +157,75 @@ def start_styles_script():
 settings = load_settings(SETTINGS_PATH)
 locals().update(settings)
 
-if __name__ == "__main__":
-    start_styles_script()
+print('Please Wait...')
 
-    print('Please Wait...')
+# Get public IP address
+public_ipv4 = read_json(SETTINGS_PATH, "ENVIRONMENT.public_ip", None)
+if not public_ipv4:
+    public_ipv4 = get_public_ip(version='ipv4')
+    update_json(SETTINGS_PATH, "ENVIRONMENT.public_ip", public_ipv4)
 
-    # Get public IP address
-    public_ipv4 = read_json(SETTINGS_PATH, "ENVIRONMENT.public_ip", None)
-    if not public_ipv4:
-        public_ipv4 = get_public_ip(version='ipv4')
-        update_json(SETTINGS_PATH, "ENVIRONMENT.public_ip", public_ipv4)
+tunnel_port = 8188 if UI == 'ComfyUI' else 7860
+TunnelingService = Tunnel(tunnel_port)
+TunnelingService.logger.setLevel(logging.DEBUG)
 
-    tunnel_port = 8188 if UI == 'ComfyUI' else 7860
-    TunnelingService = Tunnel(tunnel_port)
-    TunnelingService.logger.setLevel(logging.DEBUG)
+# environ
+if f'{VENV}/bin' not in os.environ['PATH']:
+    os.environ['PATH'] = f'{VENV}/bin:' + os.environ['PATH']
+os.environ["PYTHONWARNINGS"] = "ignore"
 
-    # environ
-    if f'{VENV}/bin' not in os.environ['PATH']:
-        os.environ['PATH'] = f'{VENV}/bin:' + os.environ['PATH']
-    os.environ["PYTHONWARNINGS"] = "ignore"
+# Setup tunnels
+tunnels = setup_tunnels(tunnel_port, public_ipv4)
+for tunnel_info in tunnels:
+    TunnelingService.add_tunnel(**tunnel_info)
 
-    # Setup tunnels
-    tunnels = setup_tunnels(tunnel_port, public_ipv4)
-    for tunnel_info in tunnels:
-        TunnelingService.add_tunnel(**tunnel_info)
+clear_output()
 
-    clear_output()
+# Update configuration paths
+paths_to_check = {
+    "tagger_hf_cache_dir": f"{WEBUI}/models/interrogators/",
+    "ad_extra_models_dir": adetailer_dir,
+    "sd_checkpoint_hash": "",
+    "sd_model_checkpoint": "",
+    "sd_vae": "None"
+}
+update_config_paths(f'{WEBUI}/config.json', paths_to_check)
+## Remove '.ipynb_checkpoints' dirs in UI
+trash_checkpoints()
 
-    # Update configuration paths
-    paths_to_check = {
-        "tagger_hf_cache_dir": f"{WEBUI}/models/interrogators/",
-        "ad_extra_models_dir": adetailer_dir,
-        # "sd_checkpoint_hash": "",
-        # "sd_model_checkpoint": "",
-        # "sd_vae": "None"
-    }
-    update_config_paths(f'{WEBUI}/config.json', paths_to_check)
-    ## Remove '.ipynb_checkpoints' dirs in UI
-    trash_checkpoints()
+# Launching the tunnel
+launcher = 'main.py' if UI == 'ComfyUI' else 'launch.py'
+password = 'vo9fdxgc0zkvghqwzrlz6rk2o00h5sc7'
 
-    # Launching the tunnel
-    launcher = 'main.py' if UI == 'ComfyUI' else 'launch.py'
-    password = 'vo9fdxgc0zkvghqwzrlz6rk2o00h5sc7'
+# Setup pinggy timer
+ipySys(f'echo -n {int(time.time())+(3600+20)} > {WEBUI}/static/timer-pinggy.txt')
 
-    # Setup pinggy timer
-    get_ipython().system(f'echo -n {int(time.time())+(3600+20)} > {WEBUI}/static/timer-pinggy.txt')
+with TunnelingService:
+    CD(WEBUI)
+    commandline_arguments += f' --port={tunnel_port}'
+    
+    # Default args append
+    if UI != 'ComfyUI':
+        commandline_arguments += ' --enable-insecure-extension-access --disable-console-progressbars --theme dark'
+        # NSFW filter for Kaggle
+        if ENV_NAME == "Kaggle":
+            commandline_arguments += f' --encrypt-pass={password} --api'
+    
+    ## Launch
+    try:
+        if UI == 'ComfyUI':
+            if check_custom_nodes_deps:
+                ipySys(f'{py} install-deps.py')
+            print("Installing dependencies for ComfyUI from requirements.txt...")
+            subprocess.run(['pip', 'install', '-r', 'requirements.txt'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            clear_output(wait=True)
 
-    with TunnelingService:
-        os.chdir(WEBUI)
-        commandline_arguments += f' --port={tunnel_port}'
-        
-        # Default args append
-        if UI != 'ComfyUI':
-            commandline_arguments += ' --enable-insecure-extension-access --disable-console-progressbars --theme dark'
-            # NSFW filter for Kaggle
-            if ENV_NAME == "Kaggle":
-                commandline_arguments += f' --encrypt-pass={password} --api'
-        
-        ## Launch
-        try:
-            if UI == 'ComfyUI':
-                if check_custom_nodes_deps:
-                    get_ipython().system('{py} install-deps.py')
-                print("Installing dependencies for ComfyUI from requirements.txt...")
-                subprocess.run(['pip', 'install', '-r', 'requirements.txt'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                clear_output(wait=True)
+        print(f"🔧 WebUI: \033[34m{UI} \033[0m")
+        ipySys(f'{py} {launcher} {commandline_arguments}')
+    except KeyboardInterrupt:
+        pass
 
-            print(f"🔧 WebUI: \033[34m{UI} \033[0m")
-            get_ipython().system(f'{py} {launcher} {commandline_arguments}')
-        except KeyboardInterrupt:
-            pass
-
-    # Print session duration
-    timer = float(open(f'{WEBUI}/static/timer.txt', 'r').read())
-    time_since_start = str(timedelta(seconds=time.time() - timer)).split('.')[0]
-    print(f"\n⌚️ You have been conducting this session for - \033[33m{time_since_start}\033[0m")
+# Print session duration
+timer = float(open(f'{WEBUI}/static/timer.txt', 'r').read())
+time_since_start = str(timedelta(seconds=time.time() - timer)).split('.')[0]
+print(f"\n⌚️ You have been conducting this session for - \033[33m{time_since_start}\033[0m")

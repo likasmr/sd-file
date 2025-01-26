@@ -7,7 +7,7 @@
         "home_path": "/root",
         "venv_path": "/root/venv",
         "scr_path": "/root/ANXETY",
-        "start_timer": 1736688569,
+        "start_timer": 1737859058,
         "public_ip": ""
     },
     "WIDGETS": {
@@ -39,7 +39,7 @@
         "custom_file_urls": "/root/file.txt"
     },
     "WEBUI": {
-        "latest": "A1111",
+        "latest": null,
         "current": "A1111",
         "webui_path": "/root/A1111",
         "model_dir": "/root/A1111/models/Stable-diffusion",
